@@ -1,7 +1,10 @@
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.gradle.testkit.runner.GradleRunner
 import org.gradle.testkit.runner.TaskOutcome
-import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -11,109 +14,75 @@ class KotlinSourcesStructurePluginTest {
 
     @TempDir
     lateinit var testProjectDir: File
-    
-    private lateinit var settingsFile: File
+
     private lateinit var buildFile: File
-    private lateinit var kotlinSourceFile: File
-    
+
     @BeforeEach
     fun setup() {
-        settingsFile = File(testProjectDir, "settings.gradle.kts")
-        buildFile = File(testProjectDir, "build.gradle.kts")
-        
-        val sourceDir = File(testProjectDir, "src/main/kotlin/com/example/test")
-        sourceDir.mkdirs()
-        
-        kotlinSourceFile = File(sourceDir, "TestClass.kt")
-        kotlinSourceFile.writeText("""
-            package com.example.test
-            
-            class TestClass
-        """.trimIndent())
+        testProjectDir.createFile("settings.gradle.kts", """rootProject.name = "test-project"""")
+
+        buildFile = testProjectDir.resolve("build.gradle.kts")
+
+        testProjectDir.createFile(
+            "src/main/kotlin/com/example/test/TestClass.kt",
+            """
+                package com.example.test
+                class TestClass
+            """
+        )
     }
-    
+
     @Test
-    fun `test task generates JSON when Kotlin plugin is applied`() {
-        settingsFile.writeText("""
-            rootProject.name = "test-project"
-        """.trimIndent())
-        
+    fun `task generates correct JSON when Kotlin plugin applied`() {
         buildFile.writeText("""
             plugins {
                 kotlin("jvm") version "1.9.21"
                 id("io.github.giothun.kotlin-sources-structure")
             }
-            
-            repositories {
-                mavenCentral()
-            }
-            
-            tasks.register("printOutputPath") {
-                dependsOn("generateKotlinSourcesStructure")
-                doLast {
-                    val task = tasks.getByName("generateKotlinSourcesStructure") as GenerateKotlinSourcesStructureTask
-                    val outputFile = task.outputFile.get().asFile
-                    println("OUTPUT_FILE_PATH=" + outputFile.absolutePath)
-                }
-            }
-        """.trimIndent())
-        
+
+            repositories { mavenCentral() }
+        """)
+
         val result = GradleRunner.create()
             .withProjectDir(testProjectDir)
-            .withArguments("printOutputPath", "--stacktrace", "--info")
+            .withArguments("generateKotlinSourcesStructure")
             .withPluginClasspath()
             .forwardOutput()
             .build()
-        
+
         assertEquals(TaskOutcome.SUCCESS, result.task(":generateKotlinSourcesStructure")?.outcome)
-        
-        println("Task output: ${result.output}")
-        
-        val outputPathLine = result.output.lines().find { it.contains("OUTPUT_FILE_PATH=") }
-        val outputFilePath = outputPathLine?.substringAfter("OUTPUT_FILE_PATH=")
-        
-        println("Found output file path: $outputFilePath")
-        
-        assertTrue(outputFilePath != null, "Output file path should be found in task output")
-        
-        val outputFile = outputFilePath?.let { File(it) }
-        outputFile?.let {
-            println("Output file exists: ${it.exists()}, path: ${it.absolutePath}")
-            
-            if (it.exists()) {
-                val jsonContent = it.readText()
-                println("JSON content: $jsonContent")
-                
-                assertTrue(jsonContent.contains("\"sourceSetName\""))
-                assertTrue(jsonContent.contains("TestClass.kt"))
-            } else {
-                println("WARNING: Output file does not exist, but we'll continue the test anyway")
+
+        val outputFile = File(testProjectDir, "build/reports/kotlin-sources-structure.json")
+        assertTrue(outputFile.exists(), "JSON output file should exist")
+
+        val jsonContent = outputFile.readText()
+        val jsonElements = Json.parseToJsonElement(jsonContent).jsonArray
+
+        assertTrue(jsonElements.any { sourceSet ->
+            sourceSet.jsonObject["files"]!!.jsonArray.any { file ->
+                file.jsonPrimitive.content.endsWith("TestClass.kt")
             }
-        }
+        }, "Generated JSON should reference 'TestClass.kt'")
     }
-    
+
     @Test
-    fun `test task logs warning when Kotlin plugin is not applied`() {
-        settingsFile.writeText("""
-            rootProject.name = "test-project"
-        """.trimIndent())
-        
+    fun `task not registered without Kotlin plugin`() {
         buildFile.writeText("""
-            plugins {
-                id("io.github.giothun.kotlin-sources-structure")
-            }
-            
-            repositories {
-                mavenCentral()
-            }
-        """.trimIndent())
-        
+            plugins { id("io.github.giothun.kotlin-sources-structure") }
+        """)
+
         val result = GradleRunner.create()
             .withProjectDir(testProjectDir)
-            .withArguments("tasks", "--stacktrace")
+            .withArguments("generateKotlinSourcesStructure")
             .withPluginClasspath()
-            .build()
-        
-        assertTrue(!result.output.contains("generateKotlinSourcesStructure"))
+            .buildAndFail()
+
+        assertTrue(result.output.contains("Task 'generateKotlinSourcesStructure' not found"))
     }
-} 
+
+    private fun File.createFile(path: String, content: String): File =
+        resolve(path).apply {
+            parentFile.mkdirs()
+            writeText(content.trimIndent())
+        }
+}
