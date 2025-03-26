@@ -11,12 +11,6 @@ A Gradle plugin that extracts and outputs the Kotlin source structure of a proje
   - Kotlin files
 - Outputs the structure as a JSON file
 
-## Requirements
-
-- Gradle 7.0+
-- Java 11+
-- Kotlin Gradle Plugin (for meaningful structure extraction)
-
 ## Setup
 
 ### Adding the Plugin
