@@ -25,7 +25,7 @@ The task is registered only if one of the supported Kotlin plugins listed above 
 
 ```kotlin
 plugins {
-    id("io.github.giothun.kotlin-sources-structure") version "1.0-SNAPSHOT"
+    id("io.github.giothun.kotlin-sources-structure") version "1.0"
 }
 ```
 
@@ -33,7 +33,7 @@ plugins {
 
 ```groovy
 plugins {
-    id 'io.github.giothun.kotlin-sources-structure' version '1.0-SNAPSHOT'
+    id 'io.github.giothun.kotlin-sources-structure' version '1.0'
 }
 ```
 
